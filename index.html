@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LakshmiNaraya — Expense Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+
+<!-- ======================================================
+     SUPABASE CONFIG SCREEN (shown before anything)
+     ====================================================== -->
+<div id="supabase-config" class="hidden">
+  <div class="login-card" style="max-width:460px">
+    <div class="login-logo">🔗</div>
+    <div class="login-title">Connect Supabase</div>
+    <div class="login-subtitle">Enter your Supabase project credentials to get started. These are stored only in your browser.</div>
+    <div style="margin-top:20px">
+      <div class="form-group">
+        <label class="form-label">Supabase Project URL</label>
+        <input id="cfg-url" type="url" class="form-control" placeholder="https://xxxx.supabase.co">
+        <div id="cfg-url-err" class="form-error">Please enter a valid Supabase URL</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Supabase Anon Key</label>
+        <input id="cfg-key" type="text" class="form-control" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+        <div id="cfg-key-err" class="form-error">Please enter the anon key</div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-secondary)">
+        Find these in your Supabase project → Settings → API
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:16px;justify-content:center" onclick="saveSupabaseConfig()">
+        💾 Save &amp; Connect
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     LOGIN PAGE
+     ====================================================== -->
+<div id="login-page" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">🪔</div>
+    <div class="login-title">LakshmiNaraya</div>
+    <div class="login-subtitle">Personal Finance Tracker — Ramsai</div>
+    <div id="login-error" class="hidden" style="background:rgba(192,57,43,0.15);border:1px solid rgba(192,57,43,0.4);color:var(--accent-red-light);padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input id="login-email" type="email" class="form-control" placeholder="ramsai@example.com" value="">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input id="login-password" type="password" class="form-control" placeholder="••••••••" onkeydown="if(event.key==='Enter') doLogin()">
+    </div>
+    <button class="btn btn-primary w-full" style="justify-content:center;margin-top:4px" onclick="doLogin()" id="login-btn">
+      🔐 Sign In
+    </button>
+    <span class="login-config-link" onclick="showSupabaseConfig()">⚙️ Change Supabase Connection</span>
+  </div>
+</div>
+
+<!-- ======================================================
+     LOADING OVERLAY
+     ====================================================== -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div style="text-align:center">
+    <div class="spinner" style="margin:0 auto 12px"></div>
+    <div style="color:var(--text-secondary);font-size:13px" id="loading-text">Loading...</div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MAIN APP
+     ====================================================== -->
+<div id="app" class="hidden">
+
+  <!-- Offline Banner -->
+  <div id="offline-banner" class="hidden" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#F59E0B,#EF4444);color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;">
+    📡 You're offline — showing cached data. New entries saved locally and will sync when reconnected.
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header-row">
+      <a class="sidebar-brand" href="#dashboard" onclick="navigate('dashboard')">
+        <span class="sidebar-logo">💰</span>
+        <div>
+          <div class="sidebar-title">LakshmiNarayana</div>
+          <div class="sidebar-subtitle">Expense Tracker</div>
+        </div>
+      </a>
+      <button class="sidebar-close-btn" onclick="toggleSidebar()" title="Close menu">✕</button>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-section="dashboard" href="#dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+      </a>
+      <a class="nav-item" data-section="transactions" href="#transactions" onclick="navigate('transactions')">
+        <span class="nav-icon">💳</span><span class="nav-label">Transactions</span>
+      </a>
+      <a class="nav-item" data-section="categories" href="#categories" onclick="navigate('categories')">
+        <span class="nav-icon">🏷️</span><span class="nav-label">Categories</span>
+      </a>
+      <a class="nav-item" data-section="upcoming" href="#upcoming" onclick="navigate('upcoming')">
+        <span class="nav-icon">📅</span><span class="nav-label">Upcoming</span>
+        <span id="sidebar-upcoming-badge" class="badge hidden" style="margin-left:auto;font-size:10px"></span>
+      </a>
+      <a class="nav-item" data-section="analytics" href="#analytics" onclick="navigate('analytics')">
+        <span class="nav-icon">📊</span><span class="nav-label">Analytics</span>
+      </a>
+      <a class="nav-item" data-section="settings" href="#settings" onclick="navigate('settings')">
+        <span class="nav-icon">⚙️</span><span class="nav-label">Settings</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px" id="sidebar-user-email"></div>
+      <button class="btn btn-secondary btn-sm w-full" style="justify-content:center" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- BOTTOM NAV (mobile) -->
+  <nav id="bottom-nav">
+    <a class="bottom-nav-item active" data-section="dashboard" href="#dashboard" onclick="navigate('dashboard')">
+      <span class="nav-icon">🏠</span><span class="nav-label">Home</span>
+    </a>
+    <a class="bottom-nav-item" data-section="transactions" href="#transactions" onclick="navigate('transactions')">
+      <span class="nav-icon">💳</span><span class="nav-label">Txns</span>
+    </a>
+    <a class="bottom-nav-item" data-section="categories" href="#categories" onclick="navigate('categories')">
+      <span class="nav-icon">🏷️</span><span class="nav-label">Categories</span>
+    </a>
+    <a class="bottom-nav-item" data-section="upcoming" href="#upcoming" onclick="navigate('upcoming')">
+      <span class="nav-icon">📅</span><span class="nav-label">Upcoming</span>
+    </a>
+    <a class="bottom-nav-item" data-section="analytics" href="#analytics" onclick="navigate('analytics')">
+      <span class="nav-icon">📊</span><span class="nav-label">Analytics</span>
+    </a>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+
+    <!-- HEADER -->
+    <header class="app-header">
+      <button class="icon-btn hamburger-btn" id="menu-toggle" onclick="toggleSidebar()" title="Menu">☰</button>
+      <div class="header-left">
+        <div class="month-selector" id="month-selector">
+          <button onclick="prevMonth()" title="Previous Month">‹</button>
+          <span class="month-label" id="month-label" onclick="toggleMonthPicker()" title="Pick month/year" style="cursor:pointer">August 2026</span>
+          <button onclick="nextMonth()" title="Next Month">›</button>
+          <button class="icon-btn month-picker-btn" onclick="toggleMonthPicker()" title="Jump to month">📅</button>
+        </div>
+      </div>
+      <!-- Month/Year Picker Popup -->
+      <div id="month-picker-popup" class="month-picker-popup hidden">
+        <div class="picker-year-row">
+          <button onclick="pickerChangeYear(-1)">‹</button>
+          <span id="picker-year">2026</span>
+          <button onclick="pickerChangeYear(1)">›</button>
+        </div>
+        <div class="picker-months" id="picker-months"></div>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+        <button class="btn btn-primary btn-sm" id="add-txn-header-btn" onclick="openAddTransaction()">+ Add</button>
+      </div>
+    </header>
+
+    <!-- ============ DASHBOARD SECTION ============ -->
+    <div id="section-dashboard" class="section-content">
+      <!-- Summary Bar -->
+      <div class="summary-grid" id="dashboard-summary">
+        <div class="summary-card income">
+          <div class="card-title">💰 Salary + Credits</div>
+          <div class="card-value" id="dash-income">₹0</div>
+          <div class="card-sub" id="dash-income-sub">This month's income</div>
+        </div>
+        <div class="summary-card expense">
+          <div class="card-title">💸 Total Spent</div>
+          <div class="card-value" id="dash-spent">₹0</div>
+          <div class="card-sub" id="dash-spent-sub">Across all categories</div>
+        </div>
+        <div class="summary-card balance">
+          <div class="card-title">🏦 Remaining</div>
+          <div class="card-value" id="dash-remaining">₹0</div>
+          <div class="card-sub" id="dash-remaining-sub">Available balance</div>
+        </div>
+        <div class="summary-card axis-bank">
+          <div class="card-title">🏛️ Axis Bank Balance</div>
+          <div class="card-value" id="dash-axis-bank">₹0</div>
+          <div class="card-sub">Remaining + unpaid CC dues</div>
+        </div>
+        <div class="summary-card savings">
+          <div class="card-title">📈 Savings Rate</div>
+          <div class="card-value" id="dash-savings-pct">0%</div>
+          <div class="card-sub" id="dash-savings-sub">Of monthly income</div>
+        </div>
+      </div>
+
+      <!-- Alerts Row -->
+      <div id="dashboard-alerts"></div>
+
+      <!-- CC Status Bar -->
+      <div class="cc-bar" id="cc-bar">
+        <div class="cc-item">
+          <span>MyZone CC:</span>
+          <span class="cc-badge" id="cc-myzone">₹0 pending</span>
+          <button class="btn btn-sm btn-secondary" id="settle-myzone-btn" onclick="openSettleCC('MyZoneCC')" style="padding:3px 8px;font-size:11px">Settle</button>
+        </div>
+        <div class="cc-item">
+          <span>Neo CC:</span>
+          <span class="cc-badge" id="cc-neo">₹0 pending</span>
+          <button class="btn btn-sm btn-secondary" id="settle-neo-btn" onclick="openSettleCC('NeoCC')" style="padding:3px 8px;font-size:11px">Settle</button>
+        </div>
+        <div class="cc-due">📅 Due: Last day of month</div>
+      </div>
+
+      <!-- Pending Recoveries -->
+      <div id="pending-recoveries-bar" class="hidden" style="margin-bottom:16px">
+        <div class="alert-row">
+          <span>🤝</span>
+          <span style="font-size:13px;font-weight:600">Pending Split Recoveries:</span>
+          <span class="badge badge-gold" id="pending-recoveries-amount">₹0</span>
+          <button class="btn btn-sm btn-secondary" onclick="openRecoveriesModal()" style="margin-left:auto">View All</button>
+        </div>
+      </div>
+
+      <!-- Category Cards -->
+      <div class="section-header">
+        <div class="section-title">📂 Category Budgets</div>
+        <button class="btn btn-secondary btn-sm" onclick="navigate('categories')">Manage →</button>
+      </div>
+      <div class="category-grid" id="category-cards">
+        <div class="section-loading"><div class="spinner" style="width:24px;height:24px;border-width:2px"></div> Loading...</div>
+      </div>
+
+      <!-- Recent Transactions -->
+      <div class="section-header mt-4">
+        <div class="section-title">🕐 Recent Transactions</div>
+        <button class="btn btn-secondary btn-sm" onclick="navigate('transactions')">View All →</button>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <table class="data-table" id="recent-txn-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th class="col-hide-mobile">Category</th>
+              <th>Amount</th>
+              <th class="col-hide-mobile">Mode</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody id="recent-txn-body">
+            <tr><td colspan="6" class="text-center" style="padding:24px;color:var(--text-secondary)">No transactions yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ TRANSACTIONS SECTION ============ -->
+    <div id="section-transactions" class="section-content hidden">
+      <div class="section-header">
+        <div class="section-title">💳 Transactions</div>
+        <button class="btn btn-primary btn-sm" onclick="openAddTransaction()">+ Add Transaction</button>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-bar">
+        <select class="filter-select" id="filter-type" onchange="applyFilters()">
+          <option value="">All Types</option>
+          <option value="expense">Expense</option>
+          <option value="credit">Credit</option>
+          <option value="split">Split</option>
+        </select>
+        <select class="filter-select" id="filter-category" onchange="applyFilters()">
+          <option value="">All Categories</option>
+        </select>
+        <select class="filter-select" id="filter-mode" onchange="applyFilters()">
+          <option value="">All Modes</option>
+          <option value="AxisBnk">AxisBnk</option>
+          <option value="UnionBnk">UnionBnk</option>
+          <option value="MyZoneCC">MyZone CC</option>
+          <option value="NeoCC">Neo CC</option>
+          <option value="Cash">Cash</option>
+        </select>
+        <input type="date" class="filter-date" id="filter-date-from" onchange="applyFilters()" title="From date">
+        <input type="date" class="filter-date" id="filter-date-to" onchange="applyFilters()" title="To date">
+        <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Clear</button>
+      </div>
+
+      <!-- Table -->
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto">
+        <table class="data-table" id="txn-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th class="col-hide-mobile">Category</th>
+              <th>Amount</th>
+              <th class="col-hide-mobile">Mode</th>
+              <th>Type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="txn-table-body">
+            <tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text-secondary)">No transactions this month</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Total Bar -->
+      <div class="txn-total-bar">
+        <div>
+          <span class="txn-total-label">Filtered Total (Expenses): </span>
+          <span class="txn-total-value" id="txn-total-expense">₹0</span>
+        </div>
+        <div>
+          <span class="txn-total-label">Credits: </span>
+          <span class="txn-total-value" id="txn-total-credit" style="color:var(--accent-green-light)">₹0</span>
+        </div>
+        <div>
+          <span class="txn-total-label">Showing: </span>
+          <span style="color:var(--text-secondary);font-size:13px" id="txn-count">0 transactions</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CATEGORIES SECTION ============ -->
+    <div id="section-categories" class="section-content hidden">
+      <div class="section-header">
+        <div class="section-title">🏷️ Categories</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="openAddCategory()">+ Add Category</button>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto">
+        <table class="data-table" id="cat-table">
+          <thead>
+            <tr>
+              <th>Icon</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Budget</th>
+              <th>Spent</th>
+              <th>Progress</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cat-table-body">
+            <tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text-secondary)">No categories yet. Add one to get started!</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="txn-total-bar mt-3">
+        <span class="txn-total-label">Total Budget: </span>
+        <span class="txn-total-value" id="cat-total-budget">₹0</span>
+        <span class="txn-total-label" style="margin-left:16px">Salary: </span>
+        <span class="txn-total-value" id="cat-salary-ref" style="color:var(--accent-green-light)">₹0</span>
+      </div>
+    </div>
+
+    <!-- ============ UPCOMING SECTION ============ -->
+    <div id="section-upcoming" class="section-content hidden">
+      <div class="section-header">
+        <div class="section-title">📅 Upcoming &amp; Scheduled</div>
+        <button class="btn btn-primary btn-sm" onclick="openAddScheduled()">+ Add Item</button>
+      </div>
+
+      <!-- Overdue -->
+      <div id="overdue-section" class="hidden mb-4">
+        <div style="font-size:13px;font-weight:700;color:var(--accent-red);margin-bottom:8px">🚨 Overdue</div>
+        <div id="overdue-list"></div>
+      </div>
+
+      <!-- Due Soon (7 days) -->
+      <div id="due-soon-section" class="hidden mb-4">
+        <div style="font-size:13px;font-weight:700;color:var(--accent-yellow);margin-bottom:8px">⚡ Due Within 7 Days</div>
+        <div id="due-soon-list"></div>
+      </div>
+
+      <!-- Upcoming 30 days -->
+      <div class="mb-4">
+        <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px">📋 Next 30 Days</div>
+        <div id="upcoming-list">
+          <div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No upcoming items</div><div class="empty-desc">Add scheduled payments or credits</div></div>
+        </div>
+      </div>
+
+      <!-- All Scheduled -->
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">🗂️ All Scheduled Items</div>
+        <div id="all-scheduled-list"></div>
+      </div>
+    </div>
+
+    <!-- ============ ANALYTICS SECTION ============ -->
+    <div id="section-analytics" class="section-content hidden">
+      <div class="section-header">
+        <div class="section-title">📊 Analytics</div>
+      </div>
+
+      <!-- Insight Cards -->
+      <div class="insight-grid mb-4" id="insight-cards">
+        <div class="insight-card">
+          <div class="insight-icon">💰</div>
+          <div class="insight-label">Savings Rate</div>
+          <div class="insight-value" id="ins-savings-rate">—</div>
+        </div>
+        <div class="insight-card">
+          <div class="insight-icon">🏆</div>
+          <div class="insight-label">Top Category</div>
+          <div class="insight-value" id="ins-top-cat">—</div>
+        </div>
+        <div class="insight-card">
+          <div class="insight-icon">⚠️</div>
+          <div class="insight-label">Overspent</div>
+          <div class="insight-value" id="ins-overspent">—</div>
+        </div>
+      </div>
+
+      <!-- Charts Grid -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-title">🥧 Spending by Category</div>
+          <div class="chart-wrap"><canvas id="chart-pie"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">🍩 Expense / Savings / Investment</div>
+          <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+        </div>
+        <div class="chart-card full-width">
+          <div class="chart-title">📊 Budget vs Actual (This Month)</div>
+          <div class="chart-wrap tall"><canvas id="chart-budget-actual"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">📈 Savings Trend (6 Months)</div>
+          <div class="chart-wrap"><canvas id="chart-savings-trend"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">📉 Monthly Expense Breakdown</div>
+          <div class="chart-wrap"><canvas id="chart-monthly-stacked"></canvas></div>
+        </div>
+        <div class="chart-card full-width">
+          <div class="chart-title">📆 Daily Spending This Month</div>
+          <div class="chart-wrap"><canvas id="chart-daily-spending"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SETTINGS SECTION ============ -->
+    <div id="section-settings" class="section-content hidden">
+      <div class="section-title mb-4">⚙️ Settings</div>
+
+      <!-- Salary -->
+      <div class="settings-section">
+        <div class="settings-section-title">💰 Salary</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Monthly Salary (₹)</label>
+            <input type="number" id="settings-salary" class="form-control" placeholder="50000">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveSalary()">💾 Save Salary</button>
+      </div>
+
+
+      <!-- CC Mapping -->
+      <div class="settings-section">
+        <div class="settings-section-title">💳 Credit Card Bank Mapping</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">MyZone CC → Debit From</label>
+            <select id="settings-myzone-bank" class="form-control">
+              <option value="AxisBnk">Axis Bank</option>
+              <option value="UnionBnk">Union Bank</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Neo CC → Debit From</label>
+            <select id="settings-neo-bank" class="form-control">
+              <option value="AxisBnk">Axis Bank</option>
+              <option value="UnionBnk">Union Bank</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveCCMapping()">💾 Save Mapping</button>
+      </div>
+
+      <!-- Preferences -->
+      <div class="settings-section">
+        <div class="settings-section-title">🎨 Preferences</div>
+        <div class="form-group">
+          <label class="toggle-wrap">
+            <div class="toggle">
+              <input type="checkbox" id="settings-show-spare" onchange="saveShowSpare()">
+              <div class="toggle-slider"></div>
+            </div>
+            <span style="font-size:13px">Show "Month's Spare 💰" category</span>
+          </label>
+        </div>
+        <div class="form-group mt-3">
+          <label class="form-label">App Theme</label>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" onclick="setTheme('dark')">🌙 Dark</button>
+            <button class="btn btn-secondary btn-sm" onclick="setTheme('light')">☀️ Light</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="settings-section">
+        <div class="settings-section-title">📤 Export Data</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Export all transactions for the selected month as CSV.</p>
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 Export Transactions CSV</button>
+      </div>
+
+      <!-- Supabase -->
+      <div class="settings-section">
+        <div class="settings-section-title">🔗 Supabase Connection</div>
+        <div class="form-group">
+          <label class="form-label">Project URL</label>
+          <input type="text" id="settings-sb-url" class="form-control" readonly style="cursor:default">
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="showSupabaseConfig()">🔄 Change Connection</button>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /app -->
+
+<!-- ======================================================
+     TOAST CONTAINER
+     ====================================================== -->
+<div id="toast-container"></div>
+
+<!-- ======================================================
+     MODAL: Add/Edit Transaction
+     ====================================================== -->
+<div id="modal-transaction" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-txn-title">Add Transaction</div>
+      <button class="modal-close" onclick="hideModal('modal-transaction')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Date *</label>
+          <input type="date" id="txn-date" class="form-control">
+          <div id="txn-date-err" class="form-error">Required</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type *</label>
+          <select id="txn-type" class="form-control" onchange="onTxnTypeChange()">
+            <option value="expense">Expense</option>
+            <option value="credit">Credit</option>
+            <option value="split">Split Payment</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input type="text" id="txn-desc" class="form-control" placeholder="e.g. Grocery shopping">
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Amount (₹) *</label>
+          <input type="number" id="txn-amount" class="form-control" placeholder="0" min="0" step="0.01" oninput="onAmountInput()">
+          <div id="txn-amount-err" class="form-error">Required</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="txn-category" class="form-control">
+            <option value="">-- No Category --</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Payment Mode *</label>
+          <select id="txn-mode" class="form-control">
+            <option value="AxisBnk">Axis Bank</option>
+            <option value="UnionBnk">Union Bank</option>
+            <option value="MyZoneCC">MyZone CC</option>
+            <option value="NeoCC">Neo CC</option>
+            <option value="Cash">Cash</option>
+          </select>
+        </div>
+        <div class="form-group" id="txn-credit-subtype-group" style="display:none">
+          <label class="form-label">Credit Type</label>
+          <select id="txn-credit-subtype" class="form-control">
+            <option value="salary">Salary</option>
+            <option value="gift">Gift</option>
+            <option value="bonus">Bonus</option>
+            <option value="freelance">Freelance</option>
+            <option value="group_recovery">Group Recovery</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Split Payment Section -->
+      <div id="split-section" style="display:none;background:rgba(41,128,185,0.08);border:1px solid rgba(41,128,185,0.2);border-radius:8px;padding:14px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#5DADE2;margin-bottom:10px">🤝 Split Payment Details</div>
+        <div class="grid-2">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">My Share (₹)</label>
+            <input type="number" id="txn-my-share" class="form-control" placeholder="0" oninput="onMyShareInput()">
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Others' Share (₹)</label>
+            <input type="number" id="txn-others-share" class="form-control" placeholder="0" readonly style="opacity:0.7">
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary)">
+          Budget impact = My Share only. CC accumulates Full Amount. Recovery = Others' share.
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-transaction')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTransaction()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: Add/Edit Category
+     ====================================================== -->
+<div id="modal-category" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-cat-title">Add Category</div>
+      <button class="modal-close" onclick="hideModal('modal-category')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Icon (emoji) *</label>
+          <input type="text" id="cat-icon" class="form-control" placeholder="🛒" maxlength="4" style="font-size:20px;text-align:center">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input type="color" id="cat-color" class="form-control" value="#D4A017" style="height:40px;padding:4px">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input type="text" id="cat-name" class="form-control" placeholder="e.g. Groceries">
+        <div id="cat-name-err" class="form-error">Required</div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Monthly Budget (₹)</label>
+          <input type="number" id="cat-budget" class="form-control" placeholder="0" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select id="cat-type" class="form-control">
+            <option value="expense">Expense</option>
+            <option value="savings">Savings</option>
+            <option value="investment">Investment</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-category')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCategory()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: Add/Edit Scheduled Item
+     ====================================================== -->
+<div id="modal-scheduled" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-sched-title">Add Scheduled Item</div>
+      <button class="modal-close" onclick="hideModal('modal-scheduled')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input type="text" id="sched-name" class="form-control" placeholder="e.g. EMI Payment">
+        <div id="sched-name-err" class="form-error">Required</div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Amount (₹) *</label>
+          <input type="number" id="sched-amount" class="form-control" placeholder="0">
+          <div id="sched-amount-err" class="form-error">Required</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select id="sched-type" class="form-control">
+            <option value="debit">Debit (Payment)</option>
+            <option value="credit">Credit (Income)</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Frequency</label>
+          <select id="sched-freq" class="form-control">
+            <option value="once">One Time</option>
+            <option value="monthly">Monthly</option>
+            <option value="weekly">Weekly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Next Date *</label>
+          <input type="date" id="sched-date" class="form-control">
+          <div id="sched-date-err" class="form-error">Required</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Category (optional)</label>
+          <select id="sched-category" class="form-control">
+            <option value="">-- None --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Payment Mode</label>
+          <select id="sched-mode" class="form-control">
+            <option value="AxisBnk">Axis Bank</option>
+            <option value="UnionBnk">Union Bank</option>
+            <option value="MyZoneCC">MyZone CC</option>
+            <option value="NeoCC">Neo CC</option>
+            <option value="Cash">Cash</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="sched-notes" class="form-control" rows="2" placeholder="Optional notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-scheduled')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveScheduled()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: Pending Recoveries
+     ====================================================== -->
+<div id="modal-recoveries" class="modal-overlay hidden">
+  <div class="modal-card modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">🤝 Pending Split Recoveries</div>
+      <button class="modal-close" onclick="hideModal('modal-recoveries')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="recoveries-list">
+        <div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-title">All recovered!</div><div class="empty-desc">No pending amounts to collect</div></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-recoveries')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: Settle CC
+     ====================================================== -->
+<div id="modal-settle-cc" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-settle-cc-title">Settle CC Bill</div>
+      <button class="modal-close" onclick="hideModal('modal-settle-cc')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="settle-cc-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-settle-cc')">Cancel</button>
+      <button class="btn btn-primary" id="settle-cc-confirm-btn" onclick="confirmSettleCC()">✅ Mark as Settled</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: AI Budget Suggestions
+     ====================================================== -->
+<div id="modal-ai-suggest" class="modal-overlay hidden">
+  <div class="modal-card modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">✨ AI Budget Suggestions</div>
+      <button class="modal-close" onclick="hideModal('modal-ai-suggest')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="ai-suggest-content">
+        <div style="text-align:center;padding:20px">
+          <div class="spinner" style="margin:0 auto 12px"></div>
+          <div style="color:var(--text-secondary)">Getting AI suggestions...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-ai-suggest')">Cancel</button>
+      <button class="btn btn-primary" id="apply-ai-btn" onclick="applyAISuggestions()" class="hidden">✅ Apply All</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     MODAL: Confirm Delete
+     ====================================================== -->
+<div id="modal-confirm" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">⚠️ Confirm Delete</div>
+      <button class="modal-close" onclick="hideModal('modal-confirm')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message" style="font-size:14px;color:var(--text-secondary);line-height:1.5"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-confirm')">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     APP SCRIPT
+     ====================================================== -->
+<script src="app.js?v=12"></script>
+</body>
+</html>
