@@ -2,12 +2,23 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>LakshmiNaraya — Expense Tracker</title>
+  
+  <!-- PWA Manifest & Mobile Configuration -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#8B5CF6">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="LakshmiNaraya">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -84,6 +95,9 @@
     📡 You're offline — showing cached data. New entries saved locally and will sync when reconnected.
   </div>
 
+  <!-- Sidebar Backdrop (mobile) -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden" onclick="toggleSidebar()"></div>
+
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header-row">
@@ -150,18 +164,18 @@
       <button class="icon-btn hamburger-btn" id="menu-toggle" onclick="toggleSidebar()" title="Menu">☰</button>
       <div class="header-left">
         <div class="month-selector" id="month-selector">
-          <button onclick="prevMonth()" title="Previous Month">‹</button>
-          <span class="month-label" id="month-label" onclick="toggleMonthPicker()" title="Pick month/year" style="cursor:pointer">August 2026</span>
-          <button onclick="nextMonth()" title="Next Month">›</button>
-          <button class="icon-btn month-picker-btn" onclick="toggleMonthPicker()" title="Jump to month">📅</button>
+          <button id="nav-prev-month-btn" onclick="prevMonth()" title="Previous Month">‹</button>
+          <span class="month-label" id="month-label" onclick="toggleMonthPicker(event)" title="Pick month/year" style="cursor:pointer">...</span>
+          <button id="nav-next-month-btn" onclick="nextMonth()" title="Next Month">›</button>
+          <button class="icon-btn month-picker-btn" onclick="toggleMonthPicker(event)" title="Jump to month">📅</button>
         </div>
       </div>
       <!-- Month/Year Picker Popup -->
       <div id="month-picker-popup" class="month-picker-popup hidden">
         <div class="picker-year-row">
-          <button onclick="pickerChangeYear(-1)">‹</button>
+          <button id="picker-prev-year-btn" onclick="pickerChangeYear(-1)" title="Previous Year">‹</button>
           <span id="picker-year">2026</span>
-          <button onclick="pickerChangeYear(1)">›</button>
+          <button id="picker-next-year-btn" onclick="pickerChangeYear(1)" title="Next Year">›</button>
         </div>
         <div class="picker-months" id="picker-months"></div>
       </div>
@@ -244,7 +258,7 @@
         <div class="section-title">🕐 Recent Transactions</div>
         <button class="btn btn-secondary btn-sm" onclick="navigate('transactions')">View All →</button>
       </div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div class="table-wrap">
         <table class="data-table" id="recent-txn-table">
           <thead>
             <tr>
@@ -295,7 +309,7 @@
       </div>
 
       <!-- Table -->
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto">
+      <div class="table-wrap">
         <table class="data-table" id="txn-table">
           <thead>
             <tr>
@@ -340,7 +354,7 @@
         </div>
       </div>
 
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto">
+      <div class="table-wrap">
         <table class="data-table" id="cat-table">
           <thead>
             <tr>
@@ -515,6 +529,13 @@
         </div>
       </div>
 
+      <!-- PWA Install -->
+      <div class="settings-section">
+        <div class="settings-section-title">📲 Install App Shortcut</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Install LakshmiNaraya as a standalone app on your Samsung Galaxy S24+ mobile or desktop home screen.</p>
+        <button class="btn btn-primary btn-sm" id="pwa-install-btn" onclick="installPWA()">📲 Install App on Device</button>
+      </div>
+
       <!-- Export -->
       <div class="settings-section">
         <div class="settings-section-title">📤 Export Data</div>
@@ -524,12 +545,18 @@
 
       <!-- Supabase -->
       <div class="settings-section">
-        <div class="settings-section-title">🔗 Supabase Connection</div>
+        <div class="settings-section-title">🔗 Supabase Connection &amp; Keep-Alive</div>
         <div class="form-group">
           <label class="form-label">Project URL</label>
           <input type="text" id="settings-sb-url" class="form-control" readonly style="cursor:default">
         </div>
-        <button class="btn btn-danger btn-sm" onclick="showSupabaseConfig()">🔄 Change Connection</button>
+        <div style="font-size:12px;color:var(--accent-green-light);margin-bottom:12px">
+          🛡️ Auto Keep-Alive is active (prevents Supabase 7-day auto-pausing).
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="keepSupabaseActive(true)">⚡ Ping Database Now</button>
+          <button class="btn btn-danger btn-sm" onclick="showSupabaseConfig()">🔄 Change Connection</button>
+        </div>
       </div>
     </div>
 

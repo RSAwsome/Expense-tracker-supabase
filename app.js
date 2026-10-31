@@ -25,10 +25,19 @@ var PAYMENT_MODES = {
   Cash:     'Cash'
 };
 
-// App starts tracking from Sep 2026. Default view = Sep 2026.
+// App starts tracking from Sep 2026.
 var TRACKING_START_YEAR  = 2026;
 var TRACKING_START_MONTH = 9;
 var FIXED_SALARY         = 43000;
+
+// Determine current calendar month and year (clamped to Sep 2026 minimum)
+var _initDate = new Date();
+var _initYear = _initDate.getFullYear();
+var _initMonth = _initDate.getMonth() + 1;
+if (_initYear < TRACKING_START_YEAR || (_initYear === TRACKING_START_YEAR && _initMonth < TRACKING_START_MONTH)) {
+  _initYear = TRACKING_START_YEAR;
+  _initMonth = TRACKING_START_MONTH;
+}
 
 // ============================================================
 // LOCAL INDEXEDDB WRAPPER — offline-first data layer
@@ -139,8 +148,8 @@ var LocalDB = {
 var state = {
   sb: null,
   user: null,
-  currentMonth: 9,
-  currentYear:  2026,
+  currentMonth: _initMonth,
+  currentYear:  _initYear,
   settings: { salary: FIXED_SALARY, gemini_api_key: '', myzone_cc_bank: 'AxisBnk', neo_cc_bank: 'AxisBnk', show_spare_category: true },
   categories: [],
   transactions: [],
@@ -506,6 +515,9 @@ async function onLoginSuccess() {
     // Navigate to initial section
     var hash = window.location.hash.replace('#','') || 'dashboard';
     navigate(hash);
+
+    // Keep Supabase free project active (runs harmless check every 5 days)
+    keepSupabaseActive(false);
   } catch(e) {
     console.error('Login success error:', e);
     showToast('Error loading data: ' + e.message, 'error');
@@ -544,6 +556,12 @@ function navigate(section) {
     else el.classList.remove('active');
   });
 
+  // Close mobile sidebar and backdrop on navigation
+  var sb = document.getElementById('sidebar');
+  if (sb) sb.classList.remove('mobile-open');
+  var bd = document.getElementById('sidebar-backdrop');
+  if (bd) bd.classList.add('hidden');
+
   // Load section data
   if (section === 'dashboard')     loadDashboard();
   if (section === 'transactions')  loadTransactionsSection();
@@ -555,13 +573,18 @@ function navigate(section) {
 
 function toggleSidebar() {
   var sb = document.getElementById('sidebar');
-  if (sb) sb.classList.toggle('mobile-open');
+  var bd = document.getElementById('sidebar-backdrop');
+  if (sb) {
+    var isOpen = sb.classList.toggle('mobile-open');
+    if (bd) bd.classList.toggle('hidden', !isOpen);
+  }
 }
 
 // ── Month/Year Picker ─────────────────────────────────────────
-var pickerYear = 2026;
+var pickerYear = _initYear;
 
-function toggleMonthPicker() {
+function toggleMonthPicker(e) {
+  if (e) e.stopPropagation();
   var popup = document.getElementById('month-picker-popup');
   if (!popup) return;
   if (!popup.classList.contains('hidden')) {
@@ -574,49 +597,58 @@ function toggleMonthPicker() {
 }
 
 function renderMonthPicker() {
-  document.getElementById('picker-year').textContent = pickerYear;
+  setElementText('picker-year', pickerYear);
+  var prevBtn = document.getElementById('picker-prev-year-btn');
+  if (prevBtn) {
+    prevBtn.disabled = (pickerYear <= TRACKING_START_YEAR);
+  }
   var grid = document.getElementById('picker-months');
   if (!grid) return;
   grid.innerHTML = '';
-  var today = new Date();
+
   for (var m = 1; m <= 12; m++) {
     var btn = document.createElement('button');
     btn.className = 'picker-month-btn';
     btn.textContent = SHORT_MONTHS[m - 1];
-    // Disable months before tracking start
+    // Disable months before tracking start (Sep 2026)
     var isBefore = pickerYear < TRACKING_START_YEAR ||
       (pickerYear === TRACKING_START_YEAR && m < TRACKING_START_MONTH);
-    // Disable far-future months (beyond next 12 months)
-    var maxYear = today.getFullYear() + 1;
-    var isAfter = pickerYear > maxYear ||
-      (pickerYear === maxYear && m > today.getMonth() + 1);
-    if (isBefore || isAfter) {
+    if (isBefore) {
       btn.classList.add('disabled');
-    } else if (m === state.currentMonth && pickerYear === state.currentYear) {
-      btn.classList.add('active');
+      btn.disabled = true;
+    } else {
+      if (m === state.currentMonth && pickerYear === state.currentYear) {
+        btn.classList.add('active');
+      }
+      (function(month) {
+        btn.onclick = function(ev) {
+          ev.stopPropagation();
+          jumpToMonth(pickerYear, month);
+        };
+      })(m);
     }
-    (function(month) {
-      btn.onclick = function() { jumpToMonth(pickerYear, month); };
-    })(m);
     grid.appendChild(btn);
   }
 }
 
 function pickerChangeYear(delta) {
-  pickerYear += delta;
+  var newYear = pickerYear + delta;
+  if (newYear < TRACKING_START_YEAR) return;
+  pickerYear = newYear;
   renderMonthPicker();
 }
 
 function jumpToMonth(year, month) {
   var popup = document.getElementById('month-picker-popup');
   if (popup) popup.classList.add('hidden');
+  if (year < TRACKING_START_YEAR || (year === TRACKING_START_YEAR && month < TRACKING_START_MONTH)) {
+    showToast('Tracking starts from September 2026', 'info');
+    return;
+  }
   state.currentYear = year;
   state.currentMonth = month;
-  var section = state.currentSection || 'dashboard';
-  if (section === 'dashboard')    loadDashboard();
-  if (section === 'transactions') loadTransactionsSection();
-  if (section === 'categories')   loadCategoriesSection();
-  if (section === 'analytics')    loadAnalytics();
+  state.currentMonthRecord = null;
+  reloadCurrentSection();
 }
 
 // Close picker when clicking outside
@@ -625,6 +657,7 @@ document.addEventListener('click', function(e) {
   if (!popup || popup.classList.contains('hidden')) return;
   var monthSel = document.getElementById('month-selector');
   if (monthSel && monthSel.contains(e.target)) return;
+  if (popup.contains(e.target)) return;
   popup.classList.add('hidden');
 });
 
@@ -730,13 +763,12 @@ async function ensureMonthRecord() {
       .select('*')
       .eq('user_id', state.user.id)
       .eq('year', state.currentYear)
-      .eq('month', state.currentMonth)
-      .single();
+      .eq('month', state.currentMonth);
 
-    if (res.data) {
-      state.currentMonthRecord = res.data;
+    if (res.data && res.data.length > 0) {
+      state.currentMonthRecord = res.data[0];
       await LocalDB.put('months', state.currentMonthRecord);
-      return res.data;
+      return state.currentMonthRecord;
     }
 
     // Create new month record
@@ -748,14 +780,38 @@ async function ensureMonthRecord() {
       salary: salary,
       myzone_cc_settled: false,
       neo_cc_settled: false
-    }).select().single();
+    }).select();
 
-    if (ins.data) {
-      state.currentMonthRecord = ins.data;
+    if (ins.data && ins.data.length > 0) {
+      state.currentMonthRecord = ins.data[0];
       await LocalDB.put('months', state.currentMonthRecord);
-      return ins.data;
+      return state.currentMonthRecord;
     }
-    return null;
+
+    // In case insert failed due to concurrent creation, fetch again
+    var retry = await state.sb.from('months')
+      .select('*')
+      .eq('user_id', state.user.id)
+      .eq('year', state.currentYear)
+      .eq('month', state.currentMonth);
+
+    if (retry.data && retry.data.length > 0) {
+      state.currentMonthRecord = retry.data[0];
+      await LocalDB.put('months', state.currentMonthRecord);
+      return state.currentMonthRecord;
+    }
+
+    // Fallback resilient record
+    state.currentMonthRecord = {
+      id: 'local_month_' + state.currentYear + '_' + state.currentMonth,
+      user_id: state.user.id,
+      year: state.currentYear,
+      month: state.currentMonth,
+      salary: salary,
+      myzone_cc_settled: false,
+      neo_cc_settled: false
+    };
+    return state.currentMonthRecord;
   } catch(e) {
     console.error('ensureMonthRecord error:', e);
     return null;
@@ -799,37 +855,76 @@ async function computeCarryForward() {
   state.carryForward = 0;
   if (!state.user || !isOnline) return;
 
-  var cy = TRACKING_START_YEAR, cm = TRACKING_START_MONTH;
-  var total = 0;
+  try {
+    // Fast batch fetch of all months to compute carry-forward across years/months
+    var mRes = await state.sb.from('months')
+      .select('id, year, month')
+      .eq('user_id', state.user.id);
 
-  while (cy < state.currentYear || (cy === state.currentYear && cm < state.currentMonth)) {
-    try {
-      var mRes = await state.sb.from('months').select('id')
-        .eq('user_id', state.user.id).eq('year', cy).eq('month', cm).single();
-      if (mRes.data) {
+    if (mRes.data && mRes.data.length > 0) {
+      var priorMonths = mRes.data.filter(function(m) {
+        if (m.year < state.currentYear) {
+          return m.year > TRACKING_START_YEAR || (m.year === TRACKING_START_YEAR && m.month >= TRACKING_START_MONTH);
+        } else if (m.year === state.currentYear) {
+          return m.month < state.currentMonth && (m.year > TRACKING_START_YEAR || m.month >= TRACKING_START_MONTH);
+        }
+        return false;
+      });
+
+      if (priorMonths.length > 0) {
+        var monthIds = priorMonths.map(function(m) { return m.id; });
         var tRes = await state.sb.from('transactions')
-          .select('amount,type,is_split,my_share').eq('month_id', mRes.data.id);
-        var txns = tRes.data || [];
-        var credits  = txns.filter(function(t) { return t.type === 'credit'; })
-          .reduce(function(s,t) { return s + parseFloat(t.amount); }, 0);
-        var expenses = txns.filter(function(t) { return t.type === 'expense' || t.type === 'split'; })
-          .reduce(function(s,t) { return s + parseFloat(t.is_split ? (t.my_share||t.amount) : t.amount); }, 0);
-        total += (credits - expenses);
-      }
-    } catch(e) { /* skip month on error */ }
+          .select('amount,type,is_split,my_share,month_id')
+          .in('month_id', monthIds);
 
-    cm++;
-    if (cm > 12) { cm = 1; cy++; }
-    if (cy > state.currentYear + 1) break; // safety
+        var txns = tRes.data || [];
+        var credits = txns.filter(function(t) { return t.type === 'credit'; })
+          .reduce(function(s, t) { return s + parseFloat(t.amount || 0); }, 0);
+        var expenses = txns.filter(function(t) { return t.type === 'expense' || t.type === 'split'; })
+          .reduce(function(s, t) { return s + parseFloat(t.is_split ? (t.my_share || t.amount) : t.amount); }, 0);
+        state.carryForward = credits - expenses;
+        return;
+      }
+      state.carryForward = 0;
+      return;
+    }
+  } catch(e) {
+    console.warn('Batch carryForward query error, using sequential fallback:', e);
   }
 
+  // Fallback sequential loop
+  var cy = TRACKING_START_YEAR, cm = TRACKING_START_MONTH;
+  var total = 0;
+  while (cy < state.currentYear || (cy === state.currentYear && cm < state.currentMonth)) {
+    try {
+      var singleM = await state.sb.from('months').select('id')
+        .eq('user_id', state.user.id).eq('year', cy).eq('month', cm);
+      if (singleM.data && singleM.data.length > 0) {
+        var tRes = await state.sb.from('transactions')
+          .select('amount,type,is_split,my_share').eq('month_id', singleM.data[0].id);
+        var txns = tRes.data || [];
+        var c = txns.filter(function(t) { return t.type === 'credit'; })
+          .reduce(function(s,t) { return s + parseFloat(t.amount); }, 0);
+        var ex = txns.filter(function(t) { return t.type === 'expense' || t.type === 'split'; })
+          .reduce(function(s,t) { return s + parseFloat(t.is_split ? (t.my_share||t.amount) : t.amount); }, 0);
+        total += (c - ex);
+      }
+    } catch(err) { }
+    cm++;
+    if (cm > 12) { cm = 1; cy++; }
+    if (cy > state.currentYear + 1) break;
+  }
   state.carryForward = total;
 }
 
-async function loadDashboard() {
+async function loadDashboard(reqId) {
+  if (reqId && reqId !== currentNavId) return;
   await ensureMonthRecord();
+  if (reqId && reqId !== currentNavId) return;
   await fetchTransactions();
+  if (reqId && reqId !== currentNavId) return;
   await computeCarryForward();
+  if (reqId && reqId !== currentNavId) return;
   renderDashboard();
   updateUpcomingBadge();
 }
@@ -2628,12 +2723,25 @@ async function applyAISuggestions() {
 // SECTION 18: MONTH NAVIGATION
 // ============================================================
 
+var currentNavId = 0;
+
+function updateNavMonthButtons() {
+  var prevBtn = document.getElementById('nav-prev-month-btn');
+  if (prevBtn) {
+    var isAtMin = (state.currentYear === TRACKING_START_YEAR && state.currentMonth === TRACKING_START_MONTH);
+    prevBtn.disabled = isAtMin;
+    prevBtn.style.opacity = isAtMin ? '0.35' : '1';
+    prevBtn.style.cursor = isAtMin ? 'not-allowed' : 'pointer';
+  }
+}
+
 function prevMonth() {
   var m = state.currentMonth - 1, y = state.currentYear;
   if (m < 1) { m = 12; y--; }
   // Block navigation before Sep 2026
   if (y < TRACKING_START_YEAR || (y === TRACKING_START_YEAR && m < TRACKING_START_MONTH)) {
     showToast('Tracking starts from September 2026', 'info');
+    updateNavMonthButtons();
     return;
   }
   state.currentMonth = m; state.currentYear = y;
@@ -2649,9 +2757,11 @@ function nextMonth() {
 }
 
 function reloadCurrentSection() {
+  var reqId = ++currentNavId;
   setElementText('month-label', MONTH_NAMES[state.currentMonth-1] + ' ' + state.currentYear);
+  updateNavMonthButtons();
   var section = state.currentSection || 'dashboard';
-  if (section === 'dashboard')    loadDashboard();
+  if (section === 'dashboard')    loadDashboard(reqId);
   if (section === 'transactions') loadTransactionsSection();
   if (section === 'categories')   loadCategoriesSection();
   if (section === 'analytics')    loadAnalytics();
@@ -2669,6 +2779,8 @@ document.addEventListener('keydown', function(e) {
     // Close mobile sidebar
     var sb = document.getElementById('sidebar');
     if (sb) sb.classList.remove('mobile-open');
+    var bd = document.getElementById('sidebar-backdrop');
+    if (bd) bd.classList.add('hidden');
   }
 });
 
@@ -2686,11 +2798,79 @@ window.addEventListener('popstate', function() {
 });
 
 // ============================================================
-// SECTION 20: INITIALIZATION
+// SECTION 20: PWA SERVICE WORKER & KEEP-ALIVE
+// ============================================================
+
+// Register Service Worker for PWA installability and offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').then(function(reg) {
+      console.log('LakshmiNaraya PWA ServiceWorker active:', reg.scope);
+    }).catch(function(err) {
+      console.warn('ServiceWorker registration error:', err);
+    });
+  });
+}
+
+// PWA Install Prompt handling
+var deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  var btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.classList.remove('hidden');
+});
+
+function installPWA() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then(function(choice) {
+      if (choice.outcome === 'accepted') {
+        showToast('App installed successfully! 🎉');
+        var btn = document.getElementById('pwa-install-btn');
+        if (btn) btn.classList.add('hidden');
+      }
+      deferredInstallPrompt = null;
+    });
+  } else {
+    showToast('To install: tap your browser menu (⋮) and select "Install app" or "Add to Home screen"', 'info');
+  }
+}
+
+// Supabase Auto Keep-Alive (runs safe read ping every 5 days to prevent free tier auto-pause)
+var STORAGE_LAST_PING = 'lakshminaraya_last_ping';
+
+async function keepSupabaseActive(manual) {
+  if (!state.sb) return;
+  var now = Date.now();
+  var lastPing = parseInt(localStorage.getItem(STORAGE_LAST_PING) || '0', 10);
+  var FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+
+  if (manual || !lastPing || (now - lastPing >= FIVE_DAYS_MS)) {
+    try {
+      // Harmless HEAD count query: touches database without modifying data or fetching large rows
+      await state.sb.from('categories').select('id', { count: 'exact', head: true });
+      localStorage.setItem(STORAGE_LAST_PING, now.toString());
+      if (manual) {
+        showToast('⚡ Supabase database pinged! Keep-alive active.', 'success');
+      }
+    } catch(e) {
+      console.warn('Keep-alive ping error:', e);
+      if (manual) {
+        showToast('Ping error: ' + e.message, 'warning');
+      }
+    }
+  }
+}
+
+// ============================================================
+// SECTION 21: INITIALIZATION
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async function() {
   loadTheme();
+  setElementText('month-label', MONTH_NAMES[state.currentMonth-1] + ' ' + state.currentYear);
+  updateNavMonthButtons();
   await LocalDB.open();
   updateOnlineStatus(navigator.onLine);
 

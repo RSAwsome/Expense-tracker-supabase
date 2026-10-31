@@ -1,0 +1,37 @@
+name: Supabase Inactivity Keep-Alive
+
+on:
+  schedule:
+    # Runs at 04:00 UTC every 4 days (prevents Supabase 7-day inactivity pause)
+    - cron: '0 4 */4 * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://ewgbcrrlxpdvywgcnywk.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Sending keep-alive ping to Supabase..."
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "⚠️ SUPABASE_ANON_KEY secret is not set yet in GitHub Secrets."
+            echo "Please add SUPABASE_ANON_KEY in your repository Settings -> Secrets and variables -> Actions."
+            # Still ping project root to touch project API
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/rest/v1/" || true)
+            echo "Root ping response code: $HTTP_STATUS"
+          else
+            # Safe read query on categories table (read only 1 id, modifies nothing)
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X GET "$SUPABASE_URL/rest/v1/categories?select=id&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" || true)
+            echo "Supabase database ping response code: $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 206 ]; then
+              echo "✅ Keep-alive ping successful! Database is active."
+            else
+              echo "ℹ️ Query returned HTTP $HTTP_STATUS (activity still registered by Supabase API gateway)."
+            fi
+          fi
