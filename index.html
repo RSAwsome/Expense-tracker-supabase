@@ -170,20 +170,22 @@
           <button class="icon-btn month-picker-btn" onclick="toggleMonthPicker(event)" title="Jump to month">📅</button>
         </div>
       </div>
-      <!-- Month/Year Picker Popup -->
-      <div id="month-picker-popup" class="month-picker-popup hidden">
-        <div class="picker-year-row">
-          <button id="picker-prev-year-btn" onclick="pickerChangeYear(-1)" title="Previous Year">‹</button>
-          <span id="picker-year">2026</span>
-          <button id="picker-next-year-btn" onclick="pickerChangeYear(1)" title="Next Year">›</button>
-        </div>
-        <div class="picker-months" id="picker-months"></div>
-      </div>
       <div class="header-right">
         <button class="icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
         <button class="btn btn-primary btn-sm" id="add-txn-header-btn" onclick="openAddTransaction()">+ Add</button>
       </div>
     </header>
+
+    <!-- Month/Year Picker Backdrop & Popup (outside header to prevent clipping) -->
+    <div id="picker-backdrop" class="picker-backdrop hidden" onclick="closeMonthPicker()"></div>
+    <div id="month-picker-popup" class="month-picker-popup hidden">
+      <div class="picker-year-row">
+        <button id="picker-prev-year-btn" onclick="pickerChangeYear(-1)" title="Previous Year">‹</button>
+        <span id="picker-year">2026</span>
+        <button id="picker-next-year-btn" onclick="pickerChangeYear(1)" title="Next Year">›</button>
+      </div>
+      <div class="picker-months" id="picker-months"></div>
+    </div>
 
     <!-- ============ DASHBOARD SECTION ============ -->
     <div id="section-dashboard" class="section-content">

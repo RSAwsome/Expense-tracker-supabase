@@ -586,14 +586,23 @@ var pickerYear = _initYear;
 function toggleMonthPicker(e) {
   if (e) e.stopPropagation();
   var popup = document.getElementById('month-picker-popup');
+  var backdrop = document.getElementById('picker-backdrop');
   if (!popup) return;
   if (!popup.classList.contains('hidden')) {
-    popup.classList.add('hidden');
+    closeMonthPicker();
     return;
   }
   pickerYear = state.currentYear;
   renderMonthPicker();
   popup.classList.remove('hidden');
+  if (backdrop) backdrop.classList.remove('hidden');
+}
+
+function closeMonthPicker() {
+  var popup = document.getElementById('month-picker-popup');
+  var backdrop = document.getElementById('picker-backdrop');
+  if (popup) popup.classList.add('hidden');
+  if (backdrop) backdrop.classList.add('hidden');
 }
 
 function renderMonthPicker() {
@@ -639,8 +648,7 @@ function pickerChangeYear(delta) {
 }
 
 function jumpToMonth(year, month) {
-  var popup = document.getElementById('month-picker-popup');
-  if (popup) popup.classList.add('hidden');
+  closeMonthPicker();
   if (year < TRACKING_START_YEAR || (year === TRACKING_START_YEAR && month < TRACKING_START_MONTH)) {
     showToast('Tracking starts from September 2026', 'info');
     return;
@@ -658,7 +666,7 @@ document.addEventListener('click', function(e) {
   var monthSel = document.getElementById('month-selector');
   if (monthSel && monthSel.contains(e.target)) return;
   if (popup.contains(e.target)) return;
-  popup.classList.add('hidden');
+  closeMonthPicker();
 });
 
 // ============================================================

@@ -255,20 +255,30 @@ body::before {
 }
 .month-picker-btn:hover { color: var(--accent-violet-light); background: rgba(139,92,246,0.12); }
 
-/* Month/Year Picker Popup */
+/* Month/Year Picker Backdrop & Popup */
+.picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1990;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: fadeIn 0.15s ease;
+}
+
 .month-picker-popup {
-  position: absolute;
-  top: calc(var(--header-height) + 6px);
+  position: fixed;
+  top: calc(var(--header-height) + 8px);
   left: 60px;
-  z-index: 200;
+  z-index: 2000;
   background: #0f101d;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  border: 1px solid rgba(139, 92, 246, 0.35);
   border-radius: 14px;
   padding: 16px;
-  width: 270px;
+  width: 280px;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06);
 }
 [data-theme="light"] .month-picker-popup {
   background: #ffffff;
@@ -1309,8 +1319,16 @@ input:checked ~ .toggle {
     transform: translateX(0);
     box-shadow: 0 0 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(139,92,246,0.3);
   }
-  .sidebar-close-btn { display: flex; align-items: center; justify-content: center; }
-  .month-picker-popup { left: 8px; right: 8px; width: auto; max-width: calc(100vw - 16px); }
+  .month-picker-popup {
+    position: fixed;
+    top: calc(var(--header-height) + 8px);
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: 320px;
+    margin: 0 auto;
+    z-index: 2000;
+  }
 
   /* App Shell: Main Content bounded between Fixed Header and Fixed Bottom Nav */
   .main-content {
@@ -1339,7 +1357,7 @@ input:checked ~ .toggle {
     gap: 6px;
     box-sizing: border-box;
     z-index: 500;
-    overflow: hidden;
+    overflow: visible;
     background: rgba(5, 5, 8, 0.96);
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
   }
