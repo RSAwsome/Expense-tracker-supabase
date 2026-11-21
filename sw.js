@@ -6,7 +6,7 @@ var STATIC_ASSETS = [
   './styles.css',
   './app.js',
   './manifest.json',
-  './icon-192.png',
+  './icon-111.png',
   './icon-512.png'
 ];
 
