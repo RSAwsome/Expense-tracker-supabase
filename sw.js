@@ -7,7 +7,7 @@ var STATIC_ASSETS = [
   './app.js',
   './manifest.json',
   './icon-111.png',
-  './icon-512.png'
+  './icon-111.png'
 ];
 
 // Install: cache local app shell
