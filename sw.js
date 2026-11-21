@@ -1,5 +1,5 @@
 // Service Worker for LakshmiNaraya Expense Tracker
-var CACHE_NAME = 'lakshminaraya-v1';
+var CACHE_NAME = 'lakshminaraya-v2';
 var STATIC_ASSETS = [
   './',
   './index.html',
