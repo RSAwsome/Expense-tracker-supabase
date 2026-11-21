@@ -1,5 +1,5 @@
 // Service Worker for LakshmiNaraya Expense Tracker
-var CACHE_NAME = 'lakshminaraya-v2';
+var CACHE_NAME = 'lakshminaraya-v3';
 var STATIC_ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,8 @@ var STATIC_ASSETS = [
   './app.js',
   './manifest.json',
   './icon-111.png',
-  './icon-111.png'
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // Install: cache local app shell
